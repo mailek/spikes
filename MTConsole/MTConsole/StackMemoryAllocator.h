@@ -5,33 +5,41 @@
 
 class CStackMemoryAllocator
 {
-public:
-	CStackMemoryAllocator(void){Clear();}
-	~CStackMemoryAllocator(void){};
+	friend class StackMemoryAllocatorTest;
 
-	typedef void* MemMarker;
+public:
+	CStackMemoryAllocator(void) { Clear(); }
+	~CStackMemoryAllocator(void) {};
+
+	typedef char MemoryChunk, *MemMarker;
 
 public:
 	template <typename T>
 	inline MemMarker Malloc(T **out)
 	{
 		assert(out);
-		MemMarker old_top = (MemMarker)&m_stackTop;
+		MemMarker old_top = m_stackTop;
 		*out = ::new(m_stackTop) T;
-		m_stackTop = (size_t*)m_stackTop + sizeof(T);
+
+		size_t chunks = (sizeof(T)-1)/sizeof(MemoryChunk)+1;
+
+		m_stackTop += chunks;
 
 		return old_top;
 	}
 
 	inline void Free(MemMarker marker, size_t size)
 	{
-		assert( marker == (size_t*)m_stackTop - size);
+		size_t chunks = (size-1)/sizeof(MemoryChunk)+1;
+
+		assert( marker == m_stackTop - chunks);
 		m_stackTop = marker;
+		assert(m_stackTop);
 	}
 
 	void Clear();
 
 private:
 	MemMarker		m_stackTop;
-	size_t			m_stack[MEM_ALLOCATOR_STACK_SZ];
+	MemoryChunk		m_stack[MEM_ALLOCATOR_STACK_SZ];
 };

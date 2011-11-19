@@ -36,17 +36,12 @@
 #include <assert.h>
 #include <cstdio>
 
-
-
 /* Threading */
 #include <pthread.h>
 #include <semaphore.h>
 #pragma comment(lib, "pthreadvc1.lib")
 
-#include "consoleout.h"
-// TODO: reference additional headers your program requires here
-
-/* testing */
+/* Verify Macros */
 #if defined(_TEST) || defined(_DEBUG)
 #define VERIFY_LOCK(e) \
 	if(e == EDEADLK ) assert(false);
@@ -54,8 +49,6 @@
 #define VERIFY_LOCK(e) e
 #endif
 
-
-// verify macro
 #ifdef _DEBUG
 #define VERIFY(a) \
 	assert(a)
@@ -63,3 +56,6 @@
 #define VERIFY(a) \
 	a
 #endif
+
+
+#include "consoleout.h"

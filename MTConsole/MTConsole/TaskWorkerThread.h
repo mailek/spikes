@@ -30,6 +30,7 @@ public:
 private:
 	void StealWorkFromOthers();
 	void GrabTaskFromTopOfWorkPile(CAbstractTask** poppedTask);
+	void RunTask(CAbstractTask* task, bool updateProgress);
 
 	CTaskScheduler	   	   *m_scheduler;			/* reference to thread manager */
 	CAbstractTask      	   *m_tasks[MAX_NUM_THREAD_TASKS]; /* task pile */

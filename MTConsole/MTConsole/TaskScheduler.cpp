@@ -5,9 +5,13 @@ using namespace TaskScheduler;
 
 static const int AUTO_HARDWARE = (-1);				/* auto detect number threads from hardware */
 
-CTaskScheduler::CTaskScheduler(void) : m_numThreads(AUTO_HARDWARE)
+CTaskScheduler::CTaskScheduler(void) :  m_numThreads(AUTO_HARDWARE),
+										m_numTasks(0),
+										m_currentTask(NULL),
+										m_isIdle(true)
 {
 	memset(m_tasks, 0, sizeof(m_tasks));
+	memset(m_threads, 0, sizeof(m_threads));
 }
 
 /* Scheduler destruction, and terminate workers */
@@ -19,11 +23,15 @@ CTaskScheduler::~CTaskScheduler(void)
 /* Terminate worker threads and free resources */
 void CTaskScheduler::ShutDown()
 {
+	debug_print( "*** Shutting down scheduler ***\n" );
+	VERIFY_LOCK(pthread_mutex_lock(&m_wakeUpMutex));
 	for(int i = 1; i < m_numThreads; i++)
 	{
 		m_threads[i].m_running = false;
 	}
+	pthread_mutex_unlock(&m_wakeUpMutex);
 
+	WaitForAllWorkersToSleep();
 	WakeAllWorkers();
 	for(int i = 1; i < m_numThreads; i++)
 	{
@@ -34,23 +42,24 @@ void CTaskScheduler::ShutDown()
 	pthread_cond_destroy( &m_wakeUpSignal );
 	pthread_mutex_destroy( &m_wakeUpMutex );
 
-	my_printf("*** Scheduler shut down ***\n\n");
+	debug_print("*** Scheduler shut down ***\n\n");
 }
 
 /* Initialize scheduler resources, and wait for all threads to become available */
 void CTaskScheduler::Init()
 {
-	my_printf("*** Setting up the scheduler ***\n");
+	debug_print("*** Setting up the scheduler ***\n");
 
+	m_taskListMutex = PTHREAD_MUTEX_INITIALIZER;
     m_wakeUpMutex = PTHREAD_MUTEX_INITIALIZER;
     m_wakeUpSignal = PTHREAD_COND_INITIALIZER;
 	sem_init(&m_sleepCounter, NULL, 0);
 	CreateThreads();
 
-	my_printf("*** Scheduler waiting for workers to be created ***\n");
+	debug_print("*** Scheduler waiting for workers to be created ***\n");
 	WaitForAllWorkersToSleep();
 
-	my_printf("*** Scheduler ready ***\n\n");
+	debug_print("*** Scheduler ready ***\n\n");
 }
 
 /* Create and initialize all workers threads, up to 
@@ -69,7 +78,7 @@ void CTaskScheduler::CreateThreads()
 	for(int i = 1; i < m_numThreads; i++)
 	{
 		/* create a new thread */
-		my_printf("*** Scheduler is spawning thread %i ***\n", i);
+		debug_print("*** Scheduler is spawning thread %i ***\n", i);
         m_threads[i].m_scheduler = this;
 		m_threads[i].m_threadId = i;
 
@@ -84,56 +93,68 @@ void CTaskScheduler::CreateThreads()
 }
 
 /* Add a task to the multi-thread task queue */
-void CTaskScheduler::AddTaskToMTQ(CAbstractTask* task)
+void CTaskScheduler::AddTaskToWorkQueue(CAbstractTask* task)
 {
     assert(task != NULL);
 	assert(m_numTasks < MAX_NUM_SCHD_TASKS);
 
-	my_printf("*** New task added to scheduler ***\n");
+	debug_print("*** New task added to scheduler ***\n");
 	
-	/* todo: protect task queue with mutex */
+	VERIFY_LOCK(pthread_mutex_lock(&m_taskListMutex));
 	memmove(&m_tasks[1], m_tasks, (MAX_NUM_SCHD_TASKS-1)*sizeof(m_tasks[0]));
 	m_tasks[0] = task;
 	task->IncrementTaskCount();
 	m_numTasks++;
 
-	if(m_numTasks == 1)
+	if(m_isIdle)
 	{
-		my_printf("*** Scheduler waiting for all workers to be ready ***\n");
+		WaitForAllWorkersToSleep();
 		WakeAllWorkers();
-		my_printf("*** Let's do this! ***\n");
+		debug_print("*** Let's do this! ***\n");
+		WorkOnNewTask();
 	}	
+
+	pthread_mutex_unlock(&m_taskListMutex);
 }
 
 /* Wait for each thread to enter sleep state */
 void CTaskScheduler::WaitForAllWorkersToSleep()
 {
-    for(int i = 1; i < m_numThreads; i++)
-	{
-		sem_wait(&m_sleepCounter);
-	}
+	//if(!m_isIdle)
+	//{
+	debug_print("*** Scheduler waiting for all workers to be ready ***\n");
+	    for(int i = 1; i < m_numThreads; i++)
+		{
+			sem_wait(&m_sleepCounter);
+		}
+
+	//	m_isIdle = true;
+	//}
 }
 
 /* Wake all worker threads */
 void CTaskScheduler::WakeAllWorkers()
 {
+	debug_print("*** Scheduler waking all workers ***\n");
 	for(int i = 0; i < m_numThreads; i++)
 	{
 		m_threads[i].m_working = true;
 	}
 
+	m_isIdle = false;
     pthread_cond_broadcast(&m_wakeUpSignal);
 }
 
 /* Complete all work tasks in queue */
-void CTaskScheduler::WorkUntilTaskComplete(/*task_complete_token token*/)
+void CTaskScheduler::WorkUntilTaskComplete(CompletionToken* token)
 {	
-	//while(token.NotComplete())
-	//{
-	m_threads[0].WorkUntilBufferEmpty();
-	//}
+	while(!token->IsComplete())
+	{
+		m_threads[0].WorkUntilBufferEmpty();
+	}
+	//WaitForAllWorkersToSleep();
 
-	my_printf("*** Given task is complete ***\n\n");
+	debug_print("*** Given task is complete ***\n\n");
 }
 
 /* Set up to the maximum number of threads preferred by user */
@@ -143,31 +164,47 @@ void CTaskScheduler::SetNumberOfThreads(int threadCnt)
 	m_numThreads = max(m_numThreads, 0 );
 }
 
-void CTaskScheduler::CompleteTask()
+void CTaskScheduler::CompleteTask(CAbstractTask *task)
 {
-	/* todo: protect with mutex */
+	VERIFY_LOCK(pthread_mutex_lock(&m_taskListMutex));
+
+	if(m_currentTask->m_complete != task->m_complete)
+	{
+		pthread_mutex_unlock(&m_taskListMutex);
+		assert(false);
+		return;
+	}
+
 	m_numTasks--;
+	m_currentTask = NULL;
+
 	if(m_numTasks == 0)
 	{
 		for(int i = 1; i < m_numThreads; i++)
 		{
-			my_printf("*** All tasks in scheduler complete - putting threads to sleep ***");
+			debug_print("*** All tasks in scheduler complete - putting threads to sleep ***\n");
 			m_threads[i].m_working = false;
-			WaitForAllWorkersToSleep();
 		}
 	}
 	else
 	{
 		WorkOnNewTask();
 	}
+
+	pthread_mutex_unlock(&m_taskListMutex);
 }
 
+/* NOTE: This function reads from m_numTasks without explicitly locking.
+		Only call this function after locking the task pool. */
 void CTaskScheduler::WorkOnNewTask()
 {
-	CAbstractTask* task = m_tasks[m_numTasks];
-	m_tasks[m_numTasks] = NULL;
-	assert(task != NULL);
+	assert(m_currentTask == NULL);
+	m_currentTask = m_tasks[m_numTasks-1];
+	if(m_currentTask != NULL)
+	{
+		m_tasks[m_numTasks-1] = NULL;
 
-	my_printf("*** Feeding a new task to the workers ***\n");
-	VERIFY(m_threads[0].AddTaskToTopOfWorkPile(task));
+		debug_print("*** Feeding a new task to the workers ***\n");
+		VERIFY(m_threads[0].AddTaskToTopOfWorkPile(m_currentTask));
+	}
 }

@@ -9,14 +9,14 @@
 
 #ifdef _TEST
 #include <limits.h>
+#include "testmain.h"
 #endif
 
 using namespace TaskScheduler;
 
 CDoubleLinkedList<IRenderable> display_list;
 CTaskScheduler* scheduler;
-pthread_mutex_t	console_mutex;
-bool console_init;
+
 
 void DoFrame();
 void PreUpdate();       /* objects are read only - no object can change its public state */
@@ -28,6 +28,12 @@ void Render();          /* do actual render draw */
 int _tmain(int argc, _TCHAR* argv[])
 {
 	init_console();
+
+#ifdef _TEST
+	TestMain* unitTests = new TestMain();
+	unitTests->RunSuite();
+	delete unitTests;
+#endif
 
 	while(true)
 	{
@@ -62,14 +68,14 @@ void PreUpdate()
 
 	/* task object is destroyed by scheduler */
 	CompletionToken taskComplete;
-	CParallelForTask* task = new CParallelForTask(&taskComplete);
-	task->m_range.start = 0;
-	task->m_range.end = INT_MAX/2;
-	task->m_range.stepSize = 5;
+	//CParallelForTask<int> task(&taskComplete); // TODO:
+	//task.m_range.start = 0;
+	//task.m_range.end = 500;//INT_MAX/2;
+	//task.m_range.stepSize = 5;
+	//task.m_isMasterTask = true;
 
-	scheduler->AddTaskToMTQ(task);
-	scheduler->WorkUntilTaskComplete();
-
+	
+	debug_print( "\n\nStarting a New Frame!\n\n" );
 }
 
 /* ignore others - update self state */

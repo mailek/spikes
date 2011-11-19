@@ -238,20 +238,24 @@
 	</References>
 	<Files>
 		<Filter
-			Name="Source Files"
-			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
-			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
+			Name="Main"
+			Filter="h;hpp;hxx;hm;inl;inc;xsd"
+			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
+			<File
+				RelativePath=".\IRenderable.h"
+				>
+			</File>
 			<File
 				RelativePath=".\MTConsole.cpp"
 				>
 			</File>
 			<File
-				RelativePath=".\ParallelForTask.cpp"
+				RelativePath=".\MTEngine.h"
 				>
 			</File>
 			<File
-				RelativePath=".\StackMemoryAllocator.cpp"
+				RelativePath=".\Resource.h"
 				>
 			</File>
 			<File
@@ -283,21 +287,63 @@
 				</FileConfiguration>
 			</File>
 			<File
-				RelativePath=".\TaskScheduler.cpp"
+				RelativePath=".\stdafx.h"
 				>
 			</File>
 			<File
-				RelativePath=".\TaskWorkerThread.cpp"
+				RelativePath=".\targetver.h"
 				>
 			</File>
 		</Filter>
 		<Filter
-			Name="Header Files"
-			Filter="h;hpp;hxx;hm;inl;inc;xsd"
-			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
+			Name="Test"
 			>
 			<File
-				RelativePath=".\AbstractTask.h"
+				RelativePath=".\StackMemoryAllocatorTest.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\StackMemoryAllocatorTest.h"
+				>
+			</File>
+			<File
+				RelativePath=".\TaskSchedulerTest.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\TaskSchedulerTest.h"
+				>
+			</File>
+			<Filter
+				Name="Test Core"
+				>
+				<File
+					RelativePath=".\ITest.h"
+					>
+				</File>
+				<File
+					RelativePath=".\TestCommon.h"
+					>
+				</File>
+				<File
+					RelativePath=".\TestMain.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\TestMain.h"
+					>
+				</File>
+				<File
+					RelativePath=".\TestSuite.h"
+					>
+				</File>
+			</Filter>
+		</Filter>
+		<Filter
+			Name="Util"
+			>
+			<File
+				RelativePath=".\consoleout.cpp"
 				>
 			</File>
 			<File
@@ -309,11 +355,27 @@
 				>
 			</File>
 			<File
-				RelativePath=".\IRenderable.h"
+				RelativePath=".\HighResTimer.cpp"
 				>
 			</File>
 			<File
-				RelativePath=".\MTEngine.h"
+				RelativePath=".\HighResTimer.h"
+				>
+			</File>
+			<File
+				RelativePath=".\StackMemoryAllocator.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\StackMemoryAllocator.h"
+				>
+			</File>
+		</Filter>
+		<Filter
+			Name="TaskScheduler"
+			>
+			<File
+				RelativePath=".\AbstractTask.h"
 				>
 			</File>
 			<File
@@ -321,19 +383,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\Resource.h"
-				>
-			</File>
-			<File
-				RelativePath=".\StackMemoryAllocator.h"
-				>
-			</File>
-			<File
-				RelativePath=".\stdafx.h"
-				>
-			</File>
-			<File
-				RelativePath=".\targetver.h"
+				RelativePath=".\TaskScheduler.cpp"
 				>
 			</File>
 			<File
@@ -341,20 +391,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\TaskWorkerThread.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\TaskWorkerThread.h"
 				>
 			</File>
 		</Filter>
-		<Filter
-			Name="Resource Files"
-			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav"
-			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}"
-			>
-		</Filter>
-		<File
-			RelativePath=".\ReadMe.txt"
-			>
-		</File>
 	</Files>
 	<Globals>
 	</Globals>

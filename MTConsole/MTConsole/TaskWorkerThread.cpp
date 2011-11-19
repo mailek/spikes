@@ -6,7 +6,7 @@ using namespace TaskScheduler;
 
 CTaskWorkerThread::CTaskWorkerThread(void) :	m_numTasks(0),
 												m_threadId(0),
-												m_running(false),
+												m_running(true),
 												m_scheduler(NULL)
 {
 	memset(&m_tasks, 0, sizeof(m_tasks));
@@ -24,19 +24,21 @@ CTaskWorkerThread::~CTaskWorkerThread(void)
 /* Delay resource construction until thread is spawned */
 void CTaskWorkerThread::Init()
 {
+	m_scratchMem.Clear();
+
 #ifndef _DEBUG
 	m_taskPoolMutex = PTHREAD_MUTEX_INITIALIZER;
 #else
-	pthread_mutexattr_t a;
+	/*pthread_mutexattr_t a;
 
 	pthread_mutexattr_init(&a);
 	pthread_mutexattr_settype(&a, PTHREAD_MUTEX_ERRORCHECK);
 	
 	pthread_mutex_init(&m_taskPoolMutex, &a);
-	pthread_mutexattr_destroy(&a);
-#endif
+	pthread_mutexattr_destroy(&a);*/
 
-	m_running = true;
+	m_taskPoolMutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER;
+#endif
 }
 
 /* Local thread instance entry point */
@@ -46,17 +48,23 @@ void CTaskWorkerThread::_Proc()
 	Init();
 
     unsigned int id = (unsigned int)this;
-	my_printf("\tThread %i: Is Alive! - PID: %i\n", m_threadId, (int)this);
+	debug_print("\tThread %i: Is Alive! - PID: %i\n", m_threadId, (int)this);
 	
     while(true)
     {
-        my_printf("\tThread %i: Going to Sleep!\n", m_threadId);
-        sem_post(&m_scheduler->m_sleepCounter);
+		VERIFY_LOCK(pthread_mutex_lock(&m_scheduler->m_wakeUpMutex));
 
-        VERIFY_LOCK(pthread_mutex_lock(&m_scheduler->m_wakeUpMutex));
+        debug_print("\tThread %i: Going to Sleep!\n", m_threadId);
+        sem_post(&m_scheduler->m_sleepCounter);
+		if(m_running == false)
+		{
+			pthread_mutex_unlock(&m_scheduler->m_wakeUpMutex);
+			break;
+		}
+
         pthread_cond_wait(&m_scheduler->m_wakeUpSignal, &m_scheduler->m_wakeUpMutex);
-        pthread_mutex_unlock(&m_scheduler->m_wakeUpMutex);
-        my_printf("\tThread %i: I'm awake!\n", m_threadId);
+		pthread_mutex_unlock(&m_scheduler->m_wakeUpMutex);
+        debug_print("\tThread %i: I'm awake!\n", m_threadId);
 
 		if(m_running == false)
 		{
@@ -67,11 +75,11 @@ void CTaskWorkerThread::_Proc()
 		{
 			/* let's do some work */
 			WorkUntilBufferEmpty();
-			my_printf("\tThread %i: Done with my work.\n", m_threadId);
+			debug_print("\tThread %i: Done with my work.\n", m_threadId);
 		}
     }
 
-	my_printf("\tThread %i: Is Terminating.\n", m_threadId);
+	debug_print("\tThread %i: Is Terminating.\n", m_threadId);
 
 }
 
@@ -97,7 +105,7 @@ bool CTaskWorkerThread::AddTaskToTopOfWorkPile(CAbstractTask* newTask)
 	int threads = m_scheduler->GetNumOfThreads();
 	splits = splits > threads ? threads : splits;
 
-	my_printf("\tThread %i: Breaking my new task into %i pieces\n", m_threadId, splits);
+	debug_print("\tThread %i: Breaking my new task into %i pieces\n", m_threadId, splits);
 
 	int splitStartIndex = m_numTasks-1;
 	CAbstractTask* taskToSplit = NULL;
@@ -115,7 +123,7 @@ bool CTaskWorkerThread::AddTaskToTopOfWorkPile(CAbstractTask* newTask)
 			if(taskToSplit->Split(&newlySplitTask))
 			{
 				/* add task to work queue */
-				my_printf("\tThread %i: Throwing a new task on the pile.\n", m_threadId);
+				debug_print("\tThread %i: Throwing a new task on the pile.\n", m_threadId);
 				
 				m_tasks[m_numTasks] = newlySplitTask;
 				keepSplitting = (splitsPerformed < splits);
@@ -127,7 +135,7 @@ bool CTaskWorkerThread::AddTaskToTopOfWorkPile(CAbstractTask* newTask)
 			}
 			else
 			{
-				my_printf("\tThread %i: Unable to break task into smaller pieces.\n", m_threadId);
+				debug_print("\tThread %i: Unable to break task into smaller pieces.\n", m_threadId);
 				keepSplitting = false;
 				break;
 			}
@@ -168,7 +176,7 @@ int CTaskWorkerThread::CanGiveUpWork(CAbstractTask **out)
 	VERIFY_LOCK(pthread_mutex_lock(&m_taskPoolMutex));
 
 	/* give away half of the work tasks */
-	int giveCnt = m_numTasks / 2;
+	int giveCnt = (m_numTasks + (2-1)) / 2;
 	for(i = 0; i < giveCnt; i++)
 	{
 		*tasksOut = m_tasks[i];
@@ -206,7 +214,7 @@ void CTaskWorkerThread::StealWorkFromOthers()
 		}
 	}
 
-	my_printf("\tThread %i: Looking for some tasks to steal.\n", m_threadId);
+	debug_print("\tThread %i: Looking for some tasks to steal.\n", m_threadId);
 
 	/* scan to our right until we find work to steal */
 	int neighborIndex = 0;
@@ -220,13 +228,12 @@ void CTaskWorkerThread::StealWorkFromOthers()
 
 		if(stolenCnt > 0)
 		{
-			my_printf("\tThread %i: Found %i tasks I could steal.\n", m_threadId, stolenCnt);
+			debug_print("\tThread %i: Found %i tasks I could steal.\n", m_threadId, stolenCnt);
 			for(int j = 0; j < stolenCnt; j++)
 			{
 				if(!AddTaskToTopOfWorkPile(stolenTasks[j]))
 				{
-					stolenTasks[j]->RunTask();
-					stolenTasks[j]->CompleteTask();
+					RunTask(stolenTasks[j], true);
 				}
 			}
 
@@ -236,7 +243,7 @@ void CTaskWorkerThread::StealWorkFromOthers()
 
 	if(stolenCnt <= 0)
 	{
-		my_printf("\tThread %i: I couldn't find anything to steal.\n", m_threadId);
+		debug_print("\tThread %i: I couldn't find anything to steal.\n", m_threadId);
 	}
 
 }
@@ -256,7 +263,7 @@ void CTaskWorkerThread::WorkUntilBufferEmpty()
 		GrabTaskFromTopOfWorkPile(&taskToWork);
 		if(taskToWork != NULL)
 		{
-			my_printf("\tThread %i: Working on a new task.\n", m_threadId);
+			debug_print("\tThread %i: Working on a new task.\n", m_threadId);
 
 			CAbstractTask* newTask = NULL;
 			CStackMemoryAllocator::MemMarker marker = 0;
@@ -277,26 +284,27 @@ void CTaskWorkerThread::WorkUntilBufferEmpty()
 
 				/* try to chip the task */
 				newTask = NULL;
-				marker = taskToWork->ChipTask(m_scratchMem, &newTask);
+				marker = taskToWork->ChipTask(&m_scratchMem, &newTask);
 				if(newTask != NULL)
 				{
-					newTask->RunTask();
+					RunTask(newTask, false);
+
 					newTask->DestroyChip(m_scratchMem, marker);
 				}
 			}
 			while(newTask != 0);
 			
 			/* run the final task portion */
-			taskToWork->RunTask();
-			taskToWork->CompleteTask();
+			RunTask(taskToWork, true);
 
-			delete taskToWork;
+			taskToWork->Destroy();
+			taskToWork = NULL;
 		}
 
 		/* if we are out of work, see if we can steal some from others */
 		if(m_numTasks == 0)
 		{
-			my_printf("\tThread %i: I'm out of tasks.\n", m_threadId);
+			debug_print("\tThread %i: I'm out of tasks.\n", m_threadId);
 			StealWorkFromOthers();
 		}
 	}
@@ -309,4 +317,16 @@ void* CTaskWorkerThread::Proc(void *args)
     t->_Proc();
 
 	return NULL;
+}
+
+void CTaskWorkerThread::RunTask(CAbstractTask* task, bool updateProgress)
+{
+	task->RunTask();
+	if(updateProgress)
+	{
+		task->IncrementTaskProgress();
+
+		if(task->IsComplete())
+			m_scheduler->CompleteTask(task);
+	}
 }

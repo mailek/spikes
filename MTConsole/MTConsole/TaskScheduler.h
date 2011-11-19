@@ -19,20 +19,23 @@ public:
 
 public:
 	void Init();
-    void AddTaskToMTQ(CAbstractTask* task);
-	void WorkUntilTaskComplete();
+    void AddTaskToWorkQueue(CAbstractTask* task);
+	void WorkUntilTaskComplete(CompletionToken* token);
 	void SetNumberOfThreads(int threadCnt);
-	void CompleteTask();
+	void CompleteTask(CAbstractTask* task);
 
 private:
 	int					m_numThreads;				/* number of threads in use */
 	CTaskWorkerThread	m_threads[MAX_NUM_THREADS]; /* thread pool, main thread is index 0 */
 	int					m_numTasks;					/* number of tasks in queue */
-	CAbstractTask*		m_tasks[MAX_NUM_SCHD_TASKS];		/* task queue - fifo */
+	CAbstractTask*		m_tasks[MAX_NUM_SCHD_TASKS];		/* task list queue - fifo */
+	CAbstractTask*		m_currentTask;				/* task currently being worked */
+	bool				m_isIdle;
 
     sem_t               m_sleepCounter;				/* scheduler waits on this when synching with threads */
     pthread_mutex_t     m_wakeUpMutex;				/* protects the wake up signal */
     pthread_cond_t      m_wakeUpSignal;				/* workers wait on this when idle */
+	pthread_mutex_t		m_taskListMutex;			/* task list mutex */
 	
 	void CreateThreads();
     void WaitForAllWorkersToSleep();
